@@ -1,0 +1,40 @@
+
+# macOS generated files
+.DS_Store
+.AppleDouble
+
+# Editor temporary files
+*.swp
+*.swo
+*~
+
+# Private SSH keys and credentials
+*.pem
+*.key
+id_rsa
+id_ed25519
+*.p12
+*.pfx
+.env
+.env.*
+!.env.example
+
+# Terraform state and local configuration
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+*.tfvars.json
+
+# Python-generated files
+__pycache__/
+*.pyc
+.venv/
+
+# Temporary files and logs
+*.tmp
+*.log
+
+# Local backups
+*.bak
+*.backup
