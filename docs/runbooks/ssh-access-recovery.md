@@ -1,409 +1,387 @@
-# CHG-001 — Ubuntu Firewall Configuration
+# SSH Access Recovery Runbook
 
 **Project:** Linux Platform Deployment and Recovery Lab  
-**Server:** platform-dev-ubuntu-01  
-**Operating System:** Ubuntu 24.04.5 LTS  
-**Environment:** Local VMware Fusion development lab  
-**Change ID:** CHG-001  
-**Change Type:** Security configuration  
-**Change Status:** Implemented — firewall verified; fresh SSH acceptance test awaiting confirmation  
-**Risk Level:** Medium  
-**Change Owner:** Linux Platform Lab Administrator
-
+| Field | Details |
+|---|---|
+| Server | `platform-dev-ubuntu-01` |
+| Operating System | Ubuntu Server 24.04 LTS |
+| Environment | VMware Fusion |
+| Document Type | Operational Recovery Runbook |
+| Document Status | Draft — recovery testing pending |
+| Owner | Linux Platform Lab Administrator |
 ---
 
-## 1. Objective
+## 1. Purpose
 
-Enable and configure the Ubuntu Uncomplicated Firewall (UFW) to restrict unauthorised incoming traffic while preserving SSH administrative access from the trusted VMware host.
+This runbook provides a safe, repeatable procedure for investigating and recovering Secure Shell (SSH) access to an Ubuntu Server.
 
-This change follows the principle of least privilege by allowing only the required incoming network traffic.
+It supports Linux system administration, troubleshooting, incident response, service restoration, and operational documentation.
 
-## 2. Initial State
+The objective is to restore authorised administrative access while maintaining the security of the server.
 
-Before the change, the following configuration was identified:
+## 2. Scope
 
-| Component | Initial Configuration |
+This runbook applies to the Ubuntu Server virtual machine `platform-dev-ubuntu-01`, running in VMware Fusion.
+
+It covers:
+
+- SSH connection timeouts.
+- SSH connection refused errors.
+- Incorrect usernames or passwords.
+- SSH service failures.
+- Firewall rules blocking authorised SSH access.
+- Network configuration problems.
+- Recovery through the VMware Fusion console.
+- Post-recovery validation and incident documentation.
+
+This runbook does not authorise changing security configurations without appropriate verification and approval.
+
+## 3. Infrastructure Overview
+
+| Component | Configuration |
 |---|---|
-| Operating system | Ubuntu 24.04.5 LTS |
-| Hostname | platform-dev-ubuntu-01 |
-| Network interface | ens33 |
-| Server IP address | 192.168.182.185 |
-| Default gateway | 192.168.182.2 |
-| IP assignment | DHCP |
-| SSH service | Listening on TCP port 22 |
-| SSH client address | 192.168.182.1 |
-| UFW status | Inactive |
+| Server hostname | `platform-dev-ubuntu-01` |
+| Operating system | Ubuntu Server 24.04 LTS |
+| Virtualisation | VMware Fusion |
+| Network interface | `ens33` |
+| Previously verified server IP | `192.168.182.185` |
+| Network subnet | `192.168.182.0/24` |
+| Default gateway | `192.168.182.2` |
+| Authorised SSH client | `192.168.182.1` |
+| SSH protocol | TCP |
+| SSH port | `22` |
+| Host firewall | UFW |
+| Recovery access | VMware Fusion console |
 
-Initial verification:
+**Important:** The server uses DHCP. Verify its current IP address before attempting recovery because the address may change.
+
+## 4. Safety Precautions
+
+Before troubleshooting:
+
+1. Ensure VMware Fusion console access is available.
+2. Keep an existing working SSH session open where possible.
+3. Never disable the firewall without a justified recovery requirement.
+4. Do not restart networking or SSH services without understanding the impact.
+5. Avoid modifying SSH authentication settings during initial diagnosis.
+6. Do not store passwords, authentication tokens or private keys in logs or evidence files.
+7. Record the actual results of commands rather than assumed outcomes.
+8. Perform disruptive recovery simulations only in the authorised lab environment.
+
+## 5. Initial Troubleshooting
+
+### 5.1 Verify Server Identity
+
+Run these commands inside Ubuntu:
 
 ```bash
-sudo ufw status verbose
+hostname
+whoami
 ```
 
-Observed output:
+**Purpose:**
 
-```text
-Status: inactive
+- `hostname` displays the server name.
+- `whoami` identifies the currently authenticated user.
+
+**Expected values:**
+
+- Hostname: `platform-dev-ubuntu-01`
+- Administrator account: `david`
+
+These values must be verified against the actual environment.
+
+### 5.2 Verify Network Interface and IP Address
+
+```bash
+ip -br address
 ```
 
-## 3. Pre-Change Verification
+**Purpose:** Display a brief summary of network interfaces and their addresses.
 
-### 3.1 Verify SSH Listening Port
+Verify that:
 
-Command:
+- `ens33` is enabled.
+- The server has an expected IPv4 address.
+- The network configuration matches the VMware lab environment.
+
+### 5.3 Verify the Routing Table
+
+```bash
+ip route
+```
+
+**Purpose:** Display the routes used by the server to reach local and external networks.
+
+Previously verified default gateway:
+
+`192.168.182.2`
+
+### 5.4 Test Gateway Connectivity
+
+```bash
+ping -c 4 192.168.182.2
+```
+
+**Purpose:** Check whether the server can communicate with its default gateway.
+
+A successful test normally shows replies with minimal or zero packet loss.
+
+**Note:** Some systems block ICMP traffic, so a failed ping alone does not prove the gateway is unavailable.
+
+## 6. SSH Service Troubleshooting
+
+### 6.1 Check SSH Service Status
+
+```bash
+sudo systemctl status ssh --no-pager
+```
+
+**Purpose:** Determine whether the OpenSSH service is running.
+
+Check whether the service is:
+
+- `active (running)`
+- `inactive`
+- `failed`
+
+Do not restart the service automatically. Investigate the cause of a failure first.
+
+### 6.2 Verify the SSH Listening Port
 
 ```bash
 sudo ss -tlnp | grep ':22 '
 ```
 
-**Explanation:**
+**Purpose:** Check whether a process is listening on TCP port 22.
 
-- `sudo` — Run the command with administrative privileges.
-- `ss` — Display socket statistics.
-- `-t` — Display TCP sockets.
-- `-l` — Display listening sockets.
-- `-n` — Display numerical addresses and ports.
-- `-p` — Display associated processes.
-- `|` — Pass the output of the first command to the next command.
-- `grep ':22 '` — Filter lines containing the port 22 pattern.
+A healthy SSH service should normally be listening on the configured interface and port.
 
-**Observed result:** SSH was listening on TCP port 22 using IPv4 and IPv6.
+If no listener appears, investigate the SSH service status and configuration.
 
-The listener was associated with `sshd` and `systemd`.
-
-### 3.2 Verify SSH Connection Information
-
-Command:
+### 6.3 Inspect SSH Service Logs
 
 ```bash
-echo "$SSH_CONNECTION"
+sudo journalctl -u ssh -n 30 --no-pager
 ```
 
-Observed result:
+**Purpose:** Display the latest 30 journal entries associated with the SSH service.
 
-```text
-192.168.182.1 60124 192.168.182.185 22
+Review the logs for:
+
+- Authentication failures.
+- Configuration errors.
+- Service startup failures.
+- Permission problems.
+- Unexpected service termination.
+
+Do not publish sensitive authentication information.
+
+### 6.4 Validate SSH Configuration
+
+```bash
+sudo sshd -t
 ```
 
-**Interpretation:**
+**Purpose:** Check the SSH daemon configuration for errors.
 
-| Value | Meaning |
+If the command completes successfully, it normally produces no output.
+
+This validates configuration syntax and certain checks but does not guarantee that remote authentication or connectivity will succeed.
+
+Do not change the SSH configuration until the cause of the problem is understood.
+
+## 7. Firewall Troubleshooting
+
+### 7.1 Inspect the Firewall
+
+```bash
+sudo ufw status verbose
+```
+
+**Purpose:** Display active firewall rules, default policies, and logging settings.
+
+The verified lab configuration includes:
+
+| Setting | Expected Configuration |
 |---|---|
-| 192.168.182.1 | SSH client IP address |
-| 60124 | Temporary client source port |
-| 192.168.182.185 | Ubuntu server IP address |
-| 22 | SSH destination port |
+| UFW status | Active |
+| Incoming traffic | Deny |
+| Outgoing traffic | Allow |
+| Routed traffic | Disabled |
+| Logging | On (low) |
+| Allowed SSH source | `192.168.182.1` |
+| SSH destination | TCP port 22 |
 
-This information was used to identify the trusted SSH source address for the firewall rule.
+### 7.2 Investigate Missing SSH Rules
 
-## 4. Change Implementation
+If the authorised Mac host cannot connect, verify the Mac's current VMware network IP address and the configured UFW allow rule.
 
-### 4.1 Configure Restricted SSH Access
+Do not add broad access rules such as unrestricted SSH access without an approved reason.
 
-Command:
+Any firewall correction must be documented in the change record.
 
-```bash
-sudo ufw allow from 192.168.182.1 to any port 22 proto tcp
-```
+### 7.3 Emergency Firewall Recovery
 
-**Purpose:** Allow incoming SSH connections from the trusted VMware host only.
+If a firewall configuration prevents legitimate administration, access the server through the VMware Fusion console.
 
-Observed result:
-
-```text
-Rules updated
-```
-
-### 4.2 Verify the Configured Rule
-
-Command:
-
-```bash
-sudo ufw show added
-```
-
-Observed result:
-
-```text
-Added user rules (see 'ufw status' for running firewall):
-ufw allow from 192.168.182.1 to any port 22 proto tcp
-```
-
-The SSH access rule was configured before the firewall was activated.
-
-### 4.3 Verify Default Firewall Policies
-
-Command:
-
-```bash
-sudo grep -E '^(DEFAULT_INPUT_POLICY|DEFAULT_OUTPUT_POLICY|DEFAULT_FORWARD_POLICY)=' /etc/default/ufw
-```
-
-Observed result:
-
-```text
-DEFAULT_INPUT_POLICY="DROP"
-DEFAULT_OUTPUT_POLICY="ACCEPT"
-DEFAULT_FORWARD_POLICY="DROP"
-```
-
-**Explanation:**
-
-- `DROP` for incoming connections: Discard incoming packets unless another rule permits them.
-- `ACCEPT` for outgoing traffic: Allow outgoing traffic by default.
-- `DROP` for forwarding: Prevent forwarding by default.
-
-The default policies already matched the intended configuration, so no changes were necessary.
-
-### 4.4 Activate the Firewall
-
-Command:
-
-```bash
-sudo ufw enable
-```
-
-The system warned that enabling the firewall might disrupt SSH connections.
-
-The previously configured SSH allow rule was checked before proceeding.
-
-The operation was confirmed by entering `y`.
-
-Observed result:
-
-```text
-Firewall is active and enabled on system startup
-```
-
-## 5. Post-Change Verification
-
-### 5.1 Verify Firewall Status
-
-Command:
+Inspect the current rules:
 
 ```bash
 sudo ufw status verbose
 ```
 
-Observed output:
+Identify and correct the problematic rule where possible.
 
-```text
-Status: active
-Logging: on (low)
-Default: deny (incoming), allow (outgoing), disabled (routed)
-New profiles: skip
-
-To                         Action      From
---                         ------      ----
-22/tcp                     ALLOW IN    192.168.182.1
-```
-
-### 5.2 Verify Administrator and Server Identity
-
-Commands:
-
-```bash
-whoami
-hostname
-```
-
-Observed results:
-
-```text
-david
-platform-dev-ubuntu-01
-```
-
-### 5.3 Latest Verification Results
-
-The following verification was repeated successfully:
-
-```bash
-whoami
-hostname
-sudo ufw status verbose
-```
-
-Observed output:
-
-```text
-david
-platform-dev-ubuntu-01
-Status: active
-Logging: on (low)
-Default: deny (incoming), allow (outgoing), disabled (routed)
-New profiles: skip
-
-To                         Action      From
---                         ------      ----
-22/tcp                     ALLOW IN    192.168.182.1
-```
-
-The successful UFW command confirms that the firewall was still active during this verification.
-
-The login session also showed:
-
-```text
-Last login: Sat Oct 31 18:23:30 2026 from 192.168.182.1
-```
-
-This identifies the source of the previous recorded SSH login. It does not, by itself, prove when the current SSH session was established.
-
-### 5.4 Verification Summary
-
-| Verification Check | Result | Status |
-|---|---|---|
-| UFW firewall | Active | Passed |
-| Firewall enabled on startup | Confirmed | Passed |
-| Incoming policy | Deny | Passed |
-| Outgoing policy | Allow | Passed |
-| Routed traffic | Disabled | Passed |
-| Firewall logging | Enabled (low) | Passed |
-| SSH destination | TCP 22 | Passed |
-| SSH permitted source | 192.168.182.1 | Passed |
-| Administrator account | david | Passed |
-| Server hostname | platform-dev-ubuntu-01 | Passed |
-| Fresh SSH connection after UFW activation | Awaiting confirmation | Pending |
-
-## 6. Risk Assessment
-
-**Primary Risk:** Misconfigured firewall rules could block legitimate SSH administrative connections.
-
-**Potential Impact:** Loss of remote server administration, operational interruption and the need for console-based recovery.
-
-**Mitigation Measures:**
-
-1. Verify the current server and client IP addresses.
-2. Identify the SSH listening port.
-3. Add the restricted SSH rule before activating UFW.
-4. Check default firewall policies.
-5. Keep a working SSH session open during changes.
-6. Maintain VMware Fusion console access for emergency recovery.
-7. Validate the firewall configuration and establish a new SSH connection after activation.
-
-## 7. Rollback and Recovery Procedure
-
-If SSH becomes unavailable following a firewall change:
-
-1. Open the Ubuntu VM console in VMware Fusion.
-2. Log in using an authorised administrator account.
-3. Inspect the firewall configuration.
-
-```bash
-sudo ufw status verbose
-```
-
-4. Identify the incorrect or missing firewall rule.
-
-5. Correct the rule if possible.
-
-6. If necessary for emergency recovery, temporarily disable UFW:
+If disabling UFW is necessary as a temporary emergency measure, obtain appropriate authorisation and document the security impact.
 
 ```bash
 sudo ufw disable
 ```
 
-**Security warning:** Disabling UFW removes its active enforcement. This should be an authorised, temporary recovery action rather than a routine troubleshooting step.
-
-7. Restore the approved access rules and re-enable the firewall:
+After restoring approved rules:
 
 ```bash
 sudo ufw enable
 sudo ufw status verbose
 ```
 
-8. Verify fresh SSH access and record the recovery action.
+**Warning:** Disabling UFW removes its active firewall enforcement. This is an emergency recovery option, not a routine troubleshooting step.
 
-**Rollback Test Status:** Procedure documented; intentional recovery testing has not yet been completed.
+## 8. SSH Client Troubleshooting
 
-## 8. Final SSH Acceptance Test
+From the Mac Terminal, test the SSH connection:
 
-### 8.1 Objective
+```bash
+ssh -v david@192.168.182.185
+```
 
-Verify that a new administrative SSH connection can be established after enabling UFW without disabling or weakening the firewall.
+**Purpose:** Display additional SSH connection diagnostics.
 
-### 8.2 Test Procedure
+Possible issues include:
 
-From a new Mac terminal:
+| Error | Possible Cause |
+|---|---|
+| Connection timed out | Network or firewall problem |
+| Connection refused | SSH service not listening or port rejected |
+| Permission denied | Authentication or account configuration issue |
+| Host key verification failed | Stored host key does not match the server's presented key |
+| No route to host | Network routing or reachability issue |
+
+**Security note:** Never bypass a host key warning without verifying the server's identity and the reason the key changed.
+
+## 9. Recovery Using VMware Fusion
+
+If SSH cannot be accessed remotely:
+
+1. Open VMware Fusion on the Mac.
+2. Select `platform-dev-ubuntu-01`.
+3. Open the virtual machine console.
+4. Sign in using the authorised Ubuntu account.
+5. Verify the hostname and network configuration.
+6. Inspect the SSH service.
+7. Review SSH service logs.
+8. Verify the firewall configuration.
+9. Identify the confirmed cause.
+10. Apply an authorised corrective action.
+11. Verify the affected service.
+12. Test SSH access from a new Mac Terminal session.
+
+Avoid making several unrelated changes simultaneously. This helps identify which action actually resolved the issue.
+
+## 10. Post-Recovery Verification
+
+After applying a corrective action, open a new SSH session from the Mac:
 
 ```bash
 ssh david@192.168.182.185
 ```
 
-After successful authentication:
+Once connected, run:
 
 ```bash
 whoami
 hostname
+echo "$SSH_CONNECTION"
 sudo ufw status verbose
 ```
 
-### 8.3 Acceptance Criteria
+Verify that:
 
-The test passes when:
-
-- A new SSH session is established after the firewall was activated.
 - The authenticated user is `david`.
-- The server hostname is `platform-dev-ubuntu-01`.
-- The UFW firewall remains active.
-- The expected SSH allow rule remains configured.
+- The hostname is `platform-dev-ubuntu-01`.
+- The SSH client address matches the authorised Mac host.
+- The server is listening and accepting SSH connections.
+- UFW remains active.
+- The restricted SSH rule remains configured.
 
-### 8.4 Current Test Status
+A successful login is not sufficient by itself if the original security controls have not been restored.
 
-**Pending confirmation of session timing.**
+## 11. Incident Documentation
 
-The administrator, hostname and UFW checks have produced the expected results.
+Every controlled recovery exercise should produce an incident record.
 
-However, the available evidence does not conclusively establish that these checks were performed in a newly opened SSH session after UFW activation.
+Record the following:
 
-Once this is confirmed, update:
-
-**Fresh SSH acceptance test:** Passed
-
-And update the change status to:
-
-**Completed — Verified**
-
-## 9. Evidence
-
-Evidence directory:
-
-`evidence/stage-03-security/`
-
-Recommended evidence records:
-
-| Evidence File | Description |
+| Field | Required Information |
 |---|---|
-| `ufw-before-enable.txt` | Initial inactive status |
-| `ssh-listener.txt` | SSH listening port and process |
-| `ssh-connection-details.txt` | Client and server connection details |
-| `ufw-added-rule.txt` | Restricted SSH firewall rule |
-| `ufw-default-policies.txt` | Default firewall policy verification |
-| `ufw-active-status.txt` | Active firewall output |
-| `ssh-post-change-verification.txt` | Fresh SSH connection verification |
+| Incident ID | Unique reference |
+| Reported problem | Description of symptoms |
+| Detection time | When the issue was identified |
+| Severity | Assessed business or operational impact |
+| Affected service | SSH or related component |
+| Diagnostic actions | Commands and checks performed |
+| Root cause | Confirmed reason for failure |
+| Recovery action | Steps used to restore access |
+| Resolution time | When service was restored |
+| Verification | Evidence that recovery succeeded |
+| Preventive action | Recommended improvement |
 
-Only actual command output should be stored as test evidence.
+For simulated incidents, label the record clearly as a laboratory exercise.
 
-## 10. Lessons Learned
+## 12. Evidence Management
 
-This change demonstrated several important Linux Platform Engineering practices.
+Store actual command outputs and supporting evidence in the appropriate project evidence folders.
 
-1. Verify the existing configuration before applying security changes.
-2. Identify the authorised SSH source before restricting inbound traffic.
-3. Apply least-privilege firewall rules.
-4. Understand the difference between configured rules and active enforcement.
-5. Validate changes using observed system output.
-6. Keep a recovery method available when modifying remote administration controls.
-7. Document risks, implementation steps, verification results and rollback procedures.
-8. Never mark an operational test as passed without sufficient evidence.
+Suitable evidence includes:
 
-## 11. Related Documentation
+- SSH service status.
+- SSH listening port information.
+- Firewall status.
+- Network interface and route information.
+- Sanitised diagnostic logs.
+- Post-recovery verification results.
 
-- `docs/runbooks/firewall-management.md`
-- `docs/runbooks/ssh-access-recovery.md`
-- `docs/security-hardening.md`
+Never fabricate successful test results.
+
+Never commit passwords, private keys, or other credentials to Git.
+
+## 13. Current Verification Status
+
+The following activities have already been verified during the project:
+
+- Ubuntu Server installation.
+- Network interface and routing.
+- Gateway connectivity.
+- External IPv4 connectivity.
+- DNS resolution.
+- HTTPS connectivity.
+- Active UFW firewall.
+- Restricted SSH access configuration.
+- Successful SSH connection from the Mac host.
+
+**Outstanding activity:** A deliberately simulated SSH failure followed by a complete, documented recovery exercise.
+
+**Runbook Status:** Draft — operational instructions documented; controlled failure-and-recovery testing pending.
+
+## 14. Related Documentation
+
 - `docs/architecture.md`
+- `docs/security-hardening.md`
+- `docs/changes/CHG-001-ufw-configuration.md`
+- `docs/runbooks/firewall-management.md`
+- `docs/deployment-guide.md`
 
 ---
 
-**Final Change Status:** Implemented — firewall verified; final SSH acceptance confirmation outstanding.
+**Document Review Status:** Initial runbook created. Pending hands-on recovery validation and final technical review.

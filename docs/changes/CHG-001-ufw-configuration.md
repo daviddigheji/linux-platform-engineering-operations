@@ -6,7 +6,7 @@
 **Environment:** Local VMware Fusion development lab  
 **Change ID:** CHG-001  
 **Change Type:** Security configuration  
-**Change Status:** Implemented — final SSH acceptance test pending confirmation  
+**Change Status:** Completed Verified
 **Risk Level:** Medium  
 **Change Owner:** Linux Platform Lab Administrator
 
@@ -212,7 +212,7 @@ These results confirm the administrator account and target server identity.
 | Permitted SSH source | 192.168.182.1 | Passed |
 | Administrator account | david | Passed |
 | Server hostname | platform-dev-ubuntu-01 | Passed |
-| Fresh SSH connection after activation | Awaiting confirmation | Pending |
+| Fresh SSH connection after activation | Verified from 192.168.182.1 | Passed |
 
 ## 6. Risk Assessment
 
@@ -286,7 +286,18 @@ sudo ufw status verbose
 - UFW remains active.
 - The authorised SSH access rule remains configured.
 
-**Current status:** The commands have been executed successfully in an SSH session, but confirmation that this was a newly established session after firewall activation is still outstanding.
+**Current status:** Passed — A fresh SSH session
+from the Mac host was successfully verified
+after UFW activation.
+
+The `SSH_CONNECTION` variable confirmed
+the client address `192.168.182.1`,
+server address `192.168.182.185`,
+and SSH destination port `22`.
+
+The server hostname was confirmed as
+`platform-dev-ubuntu-01`, and UFW remained
+active with the expected restricted SSH rule.
 
 ## 9. Evidence
 
@@ -302,11 +313,13 @@ Recommended evidence files:
 - `ufw-added-rule.txt`
 - `ufw-default-policies.txt`
 - `ufw-active-status.txt`
+- `ufw-verbose-status.txt` — Verified UFW evidence.
 - `ssh-post-change-verification.txt`
 
 Evidence should contain actual observed results, not fabricated expected outputs.
 
 ## 10. Lessons Learned
+
 
 This change demonstrates the importance of controlled security configuration on Linux servers.
 
@@ -329,4 +342,4 @@ Key lessons:
 
 ---
 
-**Final Change Status:** Implemented and firewall configuration verified. Awaiting confirmation of the fresh SSH acceptance test before final closure.
+**Final Change Status:** Completed — Verified. The UFW firewall remains active, the restricted SSH rule is configured, and SSH connectivity from the authorised Mac host has been verified.
