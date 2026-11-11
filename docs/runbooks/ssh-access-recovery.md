@@ -1,6 +1,7 @@
 # SSH Access Recovery Runbook
 
-**Project:** Linux Platform Deployment and Recovery Lab  
+**Project:** Linux Platform Engineering & Operations
+
 | Field | Details |
 |---|---|
 | Server | `platform-dev-ubuntu-01` |

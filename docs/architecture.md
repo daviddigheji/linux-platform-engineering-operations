@@ -1,4 +1,4 @@
-# Linux Platform Deployment and Recovery Lab
+# Linux Platform Engineering & Operations
 
 ## 1. Purpose
 

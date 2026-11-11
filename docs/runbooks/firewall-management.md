@@ -1,6 +1,6 @@
 # RB-001 — Ubuntu Firewall Management Runbook
 
-**Project:** Linux Platform Deployment and Recovery Lab  
+**Project:** Linux Platform Engineering & Operations\
 **Server:** platform-dev-ubuntu-01  
 **Environment:** VMware Fusion development lab  
 **Operating System:** Ubuntu 24.04.5 LTS  

@@ -1,6 +1,6 @@
 # CHG-001 — Ubuntu Firewall Configuration
 
-**Project:** Linux Platform Deployment and Recovery Lab  
+**Project:** Linux Platform Engineering & Operations\
 **Server:** platform-dev-ubuntu-01  
 **Operating System:** Ubuntu 24.04.5 LTS  
 **Environment:** Local VMware Fusion development lab  
